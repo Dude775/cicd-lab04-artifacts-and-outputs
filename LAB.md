@@ -1,13 +1,12 @@
-# Lab: Artifacts & Outputs — Pass a Build Between Jobs
+# Lab: Artifacts & Outputs — Pass Data Between Jobs
 
 ## Goal
 
 Build a two-job GitHub Actions workflow for the **Harmonic Haven** React app.
-You'll compile the app in one job, upload the output as an artifact, then
-download it in a second job and inspect it.
+You'll learn two ways jobs communicate: **artifacts** (files) and **outputs** (strings).
 
-This teaches the core artifact pattern: jobs don't share a filesystem — artifacts
-are how you move files from one job to another.
+- The `build` job compiles the app, sets a job output, and uploads the build as an artifact.
+- The `inspect` job reads the output value, downloads the artifact, and prints both.
 
 ---
 
@@ -16,17 +15,45 @@ are how you move files from one job to another.
 ```bash
 npm install
 npm run build      # compiles to dist/
-npm run test       # runs tests
 ```
 
 ---
 
-## What you have
+## Core concepts
 
-A React TypeScript app (Vite). The key script for this lab:
+### Job outputs — passing a string between jobs
 
+A step writes to `$GITHUB_OUTPUT`:
+```bash
+echo "my-key=my-value" >> $GITHUB_OUTPUT
 ```
-npm run build  →  produces dist/
+The job exposes it:
+```yaml
+jobs:
+  my-job:
+    outputs:
+      my-key: ${{ steps.step-id.outputs.my-key }}
+```
+A downstream job reads it:
+```yaml
+${{ needs.my-job.outputs.my-key }}
+```
+
+### Artifacts — passing files between jobs
+
+Upload in one job:
+```yaml
+- uses: actions/upload-artifact@v4
+  with:
+    name: my-artifact
+    path: dist/
+```
+Download in another:
+```yaml
+- uses: actions/download-artifact@v4
+  with:
+    name: my-artifact
+    path: dist/
 ```
 
 ---
@@ -34,10 +61,11 @@ npm run build  →  produces dist/
 ## Workflow shape
 
 ```
-build  →  upload dist/  →  inspect (download + print files)
+build  →  set output (artifact name)
+       →  upload dist/ as artifact
+              ↓
+           inspect  →  read output value  →  download artifact  →  print files
 ```
-
-Two jobs. The second job can't run until the first finishes.
 
 ---
 
@@ -45,19 +73,17 @@ Two jobs. The second job can't run until the first finishes.
 
 The workflow you write must:
 
-- [ ] Have a `build` job that runs `npm run build` and uploads the `dist/` folder as an artifact named **`build-output`**
-- [ ] Have an `inspect` job that depends on `build`, downloads the `build-output` artifact, and prints its contents to the log
+- [ ] Have a `build` job that runs `npm run build`, sets a job output called `artifact-name` with the value `build-output`, and uploads `dist/` as an artifact using that name
+- [ ] Have an `inspect` job that depends on `build`, reads the `artifact-name` output and prints it, downloads the artifact, and lists its contents with `ls -R`
 - [ ] Trigger on `push` to any branch
 
 ---
 
 ## Hints
 
-- Jobs don't share a filesystem — each job starts fresh. Use `actions/upload-artifact@v4`
-  in `build` and `actions/download-artifact@v4` in `inspect`.
-- The `inspect` job won't start until `build` finishes. Use `needs: build` to express
-  that dependency.
-- After downloading, run `ls -R` to print what landed on disk. That's your output.
+- To set an output: give the step an `id:`, then `run: echo "artifact-name=build-output" >> $GITHUB_OUTPUT`
+- Reference a job output in another job: `${{ needs.build.outputs.artifact-name }}`
+- You can use the output value as the artifact `name:` in both upload and download steps — that's the point
 
 ---
 
