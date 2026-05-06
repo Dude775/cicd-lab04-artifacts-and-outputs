@@ -1,68 +1,43 @@
-# Lab: Artifacts & Outputs — Capture and Share CI Results
+# Lab: Artifacts & Outputs — Pass a Build Between Jobs
 
 ## Goal
 
-Build a multi-job GitHub Actions workflow for the **Harmonic Haven** React app.
-You'll learn how to produce build outputs and test coverage reports, upload them as
-artifacts, and download them in a downstream job to generate a pipeline summary.
+Build a two-job GitHub Actions workflow for the **Harmonic Haven** React app.
+You'll compile the app in one job, upload the output as an artifact, then
+download it in a second job and inspect it.
 
-By the end of this lab you'll know how to pass data between jobs using
-`actions/upload-artifact` and `actions/download-artifact` — a core skill for
-real-world CI pipelines.
+This teaches the core artifact pattern: jobs don't share a filesystem — artifacts
+are how you move files from one job to another.
 
 ---
 
 ## Getting Started
 
-This is a React TypeScript app built with Vite. To run it locally:
-
 ```bash
 npm install
-npm run dev        # start the dev server at http://localhost:5173
-npm run build      # compile to dist/
-npm run test       # run tests with coverage (produces coverage/)
-npm run typecheck  # TypeScript type check
-npm run lint       # ESLint
+npm run build      # compiles to dist/
+npm run test       # runs tests
 ```
-
-All four check commands (`build`, `test`, `typecheck`, `lint`) should pass with
-zero errors before you start writing the workflow.
 
 ---
 
 ## What you have
 
+A React TypeScript app (Vite). The key script for this lab:
+
 ```
-harmonic-haven/
-├── src/
-│   ├── types.ts                    # Track and Playlist interfaces
-│   ├── App.tsx                     # Root component — manages playlist state
-│   ├── App.test.tsx                # App-level tests
-│   └── components/
-│       ├── PlaylistItem.tsx        # Renders a single track with a Remove button
-│       └── PlaylistItem.test.tsx   # Component tests
-├── index.html
-├── package.json
-├── vite.config.ts
-└── tsconfig.json
+npm run build  →  produces dist/
 ```
 
 ---
 
 ## Workflow shape
 
-Your workflow should have **5 jobs** arranged like this:
-
 ```
-typecheck ──┐
-            ├──→ build → upload-artifact: dist/
-lint    ────┘
-
-test ──────────→ upload-artifact: coverage/
-                         │
-                         ▼ (both build and test must finish first)
-                      report → download both artifacts → print summary
+build  →  upload dist/  →  inspect (download + print files)
 ```
+
+Two jobs. The second job can't run until the first finishes.
 
 ---
 
@@ -70,42 +45,22 @@ test ──────────→ upload-artifact: coverage/
 
 The workflow you write must:
 
-- [ ] Have a `typecheck` job that runs `npm run typecheck` on `ubuntu-latest` using Node 20
-- [ ] Have a `lint` job that runs `npm run lint` on `ubuntu-latest` using Node 20
-- [ ] Have a `build` job that depends on both `typecheck` and `lint`, runs `npm run build`, and uploads the `dist/` folder as an artifact named **`build-output`** with a retention of **7 days**
-- [ ] Have a `test` job that runs `npm run test` and uploads the `coverage/` folder as an artifact named **`coverage-report`** with a retention of **7 days**
-- [ ] Have a `report` job that depends on both `build` and `test`, downloads both artifacts, and prints a summary to the workflow log
-
-Triggers: `push` (any branch), `pull_request`, `workflow_dispatch`.
+- [ ] Have a `build` job that runs `npm run build` and uploads the `dist/` folder as an artifact named **`build-output`**
+- [ ] Have an `inspect` job that depends on `build`, downloads the `build-output` artifact, and prints its contents to the log
+- [ ] Trigger on `push` to any branch
 
 ---
 
 ## Hints
 
-- Each job runs in a fresh VM — jobs don't share a filesystem. Every job that
-  needs the source code must have its own `actions/checkout@v4` step, and every
-  job that needs Node must have its own `actions/setup-node@v4` step.
-
-- `actions/upload-artifact@v4` accepts three key inputs: `name` (the artifact
-  label), `path` (what to upload), and `retention-days`. The `path` must match
-  exactly what the script produces — `dist/` for `vite build` and `coverage/`
-  for `vitest --coverage`.
-
-- To make a job depend on multiple other jobs, `needs` accepts a list:
-  ```yaml
-  needs: [job-a, job-b]
-  ```
-
-- In the `report` job, use `actions/download-artifact@v4` once per artifact.
-  Each artifact downloads into a folder named after it by default. Add a
-  `run: ls -R` step to confirm the files landed where you expect.
+- Jobs don't share a filesystem — each job starts fresh. Use `actions/upload-artifact@v4`
+  in `build` and `actions/download-artifact@v4` in `inspect`.
+- The `inspect` job won't start until `build` finishes. Use `needs: build` to express
+  that dependency.
+- After downloading, run `ls -R` to print what landed on disk. That's your output.
 
 ---
 
 ## Where the workflow goes
 
-Create your workflow file at:
-
-```
-.github/workflows/ci.yml
-```
+Create your workflow at `.github/workflows/ci.yml`.
